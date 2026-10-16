@@ -31,11 +31,41 @@ mod spell;
 
 use std::sync::Arc;
 
-use harper_core::linting::LintGroup;
+use harper_core::linting::{
+    FlatConfig, HumanReadableStructuredConfig, LintGroup, StructuredConfig,
+};
 use harper_core::spell::Dictionary;
 
 pub use papiamentu::aruban_candidates;
 pub use spell::PapiamentoSpellCheck;
+
+/// The Papiamento rules grouped and labelled for settings screens, with their default
+/// states (all enabled). Mirrors `StructuredConfig::curated()` for English.
+pub fn structured_config() -> StructuredConfig {
+    let human: HumanReadableStructuredConfig =
+        serde_json::from_str(include_str!("../default_config.json"))
+            .expect("default_config.json should be valid");
+
+    human
+        .to_structured_config()
+        .expect("default_config.json should be a valid structured config")
+}
+
+/// The default state of every Papiamento rule. Mirrors `FlatConfig::new_curated()` for
+/// English.
+pub fn default_lint_config() -> FlatConfig {
+    structured_config()
+        .to_flat_config()
+        .expect("default_config.json should be a valid structured config")
+}
+
+/// Fill the Papiamento rules that `config` does not mention with their defaults, keeping
+/// everything that is set. Mirrors `FlatConfig::fill_with_curated()` for English.
+pub fn fill_with_defaults(config: &mut FlatConfig) {
+    let mut filled = default_lint_config();
+    filled.merge_from(std::mem::take(config));
+    *config = filled;
+}
 
 /// Create a [`LintGroup`] with every Papiamento rule enabled.
 pub fn lint_group(dictionary: Arc<impl Dictionary + 'static>) -> LintGroup {
@@ -52,7 +82,7 @@ pub fn lint_group(dictionary: Arc<impl Dictionary + 'static>) -> LintGroup {
     group.add_chunk_expr_linter("PapiamentoClockTimes", rules::clock_times());
     group.add_chunk_expr_linter("PapiamentoPrefixHyphen", rules::prefix_hyphen());
 
-    group.set_all_rules_to(Some(true));
+    group.config = default_lint_config();
     group
 }
 
@@ -105,6 +135,35 @@ mod tests {
             let messages: Vec<String> = lint(text).iter().map(|l| l.message.clone()).collect();
             assert!(messages.is_empty(), "{text}: {messages:?}");
         }
+    }
+
+    #[test]
+    fn structured_config_covers_every_rule() {
+        let group = lint_group(dictionary::curated());
+        let config = super::default_lint_config();
+
+        let mut rules: Vec<&str> = group.iter_keys().collect();
+        rules.sort_unstable();
+        for rule in &rules {
+            assert!(
+                config.is_rule_enabled(rule),
+                "{rule} is not enabled by default"
+            );
+        }
+        let serialized = serde_json::to_value(&config).unwrap();
+        assert_eq!(serialized.as_object().unwrap().len(), rules.len());
+    }
+
+    #[test]
+    fn fill_with_defaults_keeps_user_choices() {
+        let mut config = harper_core::linting::FlatConfig::default();
+        config.set_rule_enabled("PapiamentoNumerals", false);
+        config.set_rule_enabled("SpellCheck", true);
+        super::fill_with_defaults(&mut config);
+
+        assert!(!config.is_rule_enabled("PapiamentoNumerals"));
+        assert!(config.is_rule_enabled("PapiamentoSpellCheck"));
+        assert!(config.is_rule_enabled("SpellCheck"));
     }
 
     #[test]

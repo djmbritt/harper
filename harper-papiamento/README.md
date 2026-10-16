@@ -24,6 +24,18 @@ let lints = linter.lint(&document);
 
 Parse documents with the Papiamento dictionary (not Harper's English one), so that word tokens get the right metadata.
 
+In JavaScript (harper.js), switch any linter with `linter.setWritingLanguage(WritingLanguage.Papiamento)`.
+
+### Harper Desktop (macOS)
+
+Harper Desktop has a **Language** setting (Settings → General) to switch between English and Papiamento. It applies to the system-wide highlighter, the editor window and the rules list.
+
+The workflow `.github/workflows/desktop_macos_papiamento.yml` builds a universal (Apple Silicon and Intel) `.dmg` on every push to the `papiamento` branch, or on demand from the Actions tab ("Run workflow"). Download it from the run's **Artifacts**. The build:
+
+- is called **Harper Papiamento** and has its updater turned off (`harper-desktop/src-tauri/tauri.papiamento.conf.json`). Otherwise it would update itself to the official release, which has no Papiamento.
+- is signed ad hoc, not with an Apple Developer certificate. The first time you open it, macOS will block it. Right-click the app and choose **Open**, or run `xattr -dr com.apple.quarantine "/Applications/Harper Papiamento.app"`. Grant the Accessibility permission again after each new build.
+- shares its settings folder with the official Harper Desktop, so don't run both at once.
+
 ## Rules
 
 | Rule | What it checks | Section |

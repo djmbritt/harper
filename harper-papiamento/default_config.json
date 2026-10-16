@@ -1,0 +1,63 @@
+{
+	"settings": [
+		{
+			"Group": {
+				"label": "Papiamento",
+				"description": "Spelling and orthography of Aruban Papiamento, following \"Ortografia di Papiamento\" (Afkondigingsblad van Aruba 2018 no. 68).",
+				"child": {
+					"settings": [
+						{
+							"Bool": {
+								"name": "PapiamentoSpellCheck",
+								"state": true,
+								"label": "Spelling"
+							}
+						},
+						{
+							"Bool": {
+								"name": "PapiamentoClosedCompounds",
+								"state": true,
+								"label": "Words written as one"
+							}
+						},
+						{
+							"Bool": {
+								"name": "PapiamentoOpenCompounds",
+								"state": true,
+								"label": "Words written apart"
+							}
+						},
+						{
+							"Bool": {
+								"name": "PapiamentoNumerals",
+								"state": true,
+								"label": "Numbers 11 to 99"
+							}
+						},
+						{
+							"Bool": {
+								"name": "PapiamentoClockTimes",
+								"state": true,
+								"label": "Times of day with an apostrophe"
+							}
+						},
+						{
+							"Bool": {
+								"name": "PapiamentoPrefixHyphen",
+								"state": true,
+								"label": "Hyphen after ex and vice"
+							}
+						},
+						{
+							"Bool": {
+								"name": "PapiamentoLowercaseDaysMonths",
+								"state": true,
+								"label": "Lowercase days and months"
+							}
+						}
+					]
+				}
+			}
+		}
+	]
+}
