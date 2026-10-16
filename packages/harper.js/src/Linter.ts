@@ -128,7 +128,7 @@ export default interface Linter {
 
 	/** Switch the natural language this linter checks, for example to Papiamento.
 	 * This swaps the curated dictionary and the rules; added words, ignored lints and the
-	 * rule configuration are kept. */
+	 * rule configuration are kept. Rules from loaded Weirpacks have to be loaded again. */
 	setWritingLanguage(writingLanguage: WritingLanguage): Promise<void>;
 
 	/** Summarize the linter's usage statistics.

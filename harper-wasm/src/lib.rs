@@ -223,6 +223,8 @@ impl Linter {
 
     /// Switch the natural language this linter checks. This swaps the curated dictionary and
     /// the rules; the user dictionary, ignored lints and the rule configuration are kept.
+    /// Like [`Self::import_words`], it rebuilds the rules, so rules from imported Weirpacks
+    /// must be imported again.
     pub fn set_writing_language(&mut self, writing_language: WritingLanguage) {
         if self.writing_language != writing_language {
             self.writing_language = writing_language;
