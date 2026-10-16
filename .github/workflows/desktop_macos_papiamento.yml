@@ -1,0 +1,60 @@
+name: Harper Desktop for macOS (Papiamento)
+
+# Builds an unsigned, universal (Apple Silicon + Intel) Harper Desktop with Papiamento
+# support and uploads the .dmg as a workflow artifact.
+on:
+  push:
+    branches: ["papiamento"]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  desktop-macos:
+    name: Build Harper Desktop for macOS
+    runs-on: macos-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+      - name: Install pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          target: wasm32-unknown-unknown,aarch64-apple-darwin,x86_64-apple-darwin
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: ".node-version"
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-bin: "true"
+          key: build-desktop-macos-papiamento
+          workspaces: |
+            . -> target
+            harper-desktop/src-tauri -> target
+      - uses: cargo-bins/cargo-binstall@b874e25ea559687bec77e281e9b271aa1367b624 # main
+      - name: Install `wasm-pack`
+        run: cargo binstall wasm-pack --force --no-confirm
+      - name: Build the web packages
+        run: just build-harperjs build-lint-framework build-components build-harper-editor
+      - name: Build Harper Desktop
+        working-directory: harper-desktop
+        # The overrides in tauri.papiamento.conf.json name the app "Harper Papiamento", sign it
+        # ad hoc (there is no Apple Developer certificate) and turn off the updater, which
+        # would otherwise replace this build with the official release.
+        run: |
+          pnpm install
+          pnpm tauri build -b app,dmg --target universal-apple-darwin --config "$GITHUB_WORKSPACE/harper-desktop/src-tauri/tauri.papiamento.conf.json"
+      - name: Upload the .dmg
+        uses: actions/upload-artifact@v7
+        with:
+          name: harper-papiamento-macos-universal
+          path: harper-desktop/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error

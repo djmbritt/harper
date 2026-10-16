@@ -1,0 +1,15 @@
+{
+	"$schema": "https://schema.tauri.app/config/2",
+	"productName": "Harper Papiamento",
+	"bundle": {
+		"createUpdaterArtifacts": false,
+		"macOS": {
+			"signingIdentity": "-"
+		}
+	},
+	"plugins": {
+		"updater": {
+			"endpoints": []
+		}
+	}
+}
