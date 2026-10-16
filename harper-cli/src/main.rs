@@ -6,6 +6,7 @@ use std::{
     io::{self, BufReader},
     path::PathBuf,
     process,
+    sync::Arc,
 };
 
 use anyhow::anyhow;
@@ -34,7 +35,7 @@ mod lint;
 mod lint_engine;
 mod lint_reporter;
 
-use crate::lint::{OutputFormat, lint};
+use crate::lint::{Language, OutputFormat, lint};
 
 use annotate::AnnotationType;
 use input::{
@@ -80,6 +81,10 @@ enum Args {
         /// Specify the dialect. Common synonyms, abbreviations, and codes are supported.
         #[arg(short, long, default_value = "us")]
         dialect: String,
+        /// Specify the language: `en` (English, default) or `pap` (Papiamento, Aruban
+        /// spelling). The dialect only applies to English.
+        #[arg(short, long, default_value = "en")]
+        language: String,
         /// Path to the user dictionary.
         #[arg(short, long, default_value = config_dir().unwrap().join("harper-ls/dictionary.txt").into_os_string(), value_hint = ValueHint::FilePath)]
         user_dict_path: PathBuf,
@@ -259,6 +264,7 @@ fn main() -> anyhow::Result<()> {
             only,
             keep_overlapping_lints,
             dialect: dialect_str,
+            language: language_str,
             user_dict_path,
             file_dict_path,
             weirpacks,
@@ -268,12 +274,19 @@ fn main() -> anyhow::Result<()> {
         } => {
             let dialect = parse_dialect(&dialect_str)
                 .map_err(|e| anyhow!("Invalid dialect '{}': {}", dialect_str, e))?;
+            let language = parse_language(&language_str)?;
+
+            let language_dictionary: Arc<dyn Dictionary> = match language {
+                Language::English => curated_dictionary,
+                Language::Papiamento => harper_papiamento::dictionary::curated(),
+            };
 
             lint(
                 markdown_options,
-                curated_dictionary,
+                language_dictionary,
                 inputs,
                 LintOptions {
+                    language,
                     count,
                     ignore,
                     only,
@@ -1019,6 +1032,17 @@ fn main() -> anyhow::Result<()> {
             );
             Ok(())
         }
+    }
+}
+
+/// Parse a language string into a [`Language`].
+fn parse_language(language: &str) -> anyhow::Result<Language> {
+    match language.to_lowercase().as_str() {
+        "en" | "eng" | "english" => Ok(Language::English),
+        "pap" | "pap-aw" | "pap_aw" | "papiamento" | "aruba" => Ok(Language::Papiamento),
+        _ => Err(anyhow!(
+            "Unknown language: {language}. Supported languages are `en` and `pap`."
+        )),
     }
 }
 

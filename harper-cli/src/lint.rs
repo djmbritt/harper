@@ -84,7 +84,38 @@ pub enum OutputFormat {
     Compact,
 }
 
+/// The language whose dictionary and rules are used for linting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Language {
+    English,
+    /// Aruban Papiamento, following "Ortografia di Papiamento" (AB 2018 no. 68).
+    Papiamento,
+}
+
+impl Language {
+    /// The rules available for this language, all enabled.
+    pub fn lint_group(
+        self,
+        dictionary: Arc<impl Dictionary + 'static>,
+        dialect: Dialect,
+    ) -> harper_core::linting::LintGroup {
+        match self {
+            Language::English => harper_core::linting::LintGroup::new_curated(dictionary, dialect),
+            Language::Papiamento => harper_papiamento::lint_group(dictionary),
+        }
+    }
+
+    /// The name of the rule that reports misspelled words.
+    pub fn spell_check_rule(self) -> &'static str {
+        match self {
+            Language::English => "SpellCheck",
+            Language::Papiamento => "PapiamentoSpellCheck",
+        }
+    }
+}
+
 pub struct LintOptions {
+    pub language: Language,
     pub count: bool,
     pub ignore: Option<Vec<String>>,
     pub only: Option<Vec<String>>,
@@ -180,6 +211,7 @@ pub fn lint(
     file_dict_path: PathBuf,
 ) -> anyhow::Result<()> {
     let LintOptions {
+        language,
         count,
         ref mut ignore,
         ref mut only,
@@ -198,7 +230,12 @@ pub fn lint(
 
     // Filter out any rules from ignore/only lists that don't exist in the current config
     // Uses a cached config to avoid expensive linter initialization
-    let mut config = FlatConfig::new_curated();
+    let mut config = match language {
+        Language::English => FlatConfig::new_curated(),
+        Language::Papiamento => {
+            harper_papiamento::lint_group(harper_papiamento::dictionary::curated()).config
+        }
+    };
     for pack in &weirpacks {
         for rule in pack.rules.keys() {
             config.set_rule_enabled(rule, true);
@@ -345,8 +382,12 @@ pub fn lint(
         }
         ReportStyle::Compact => {}
         _ => {
+            let spelling_heading = match language {
+                Language::English => format!("Spelling::SpellCheck (For dialect: {dialect})"),
+                Language::Papiamento => "Spelling::PapiamentoSpellCheck".to_string(),
+            };
             final_report(
-                dialect,
+                &spelling_heading,
                 true,
                 all_lint_kinds,
                 all_rules,
@@ -379,7 +420,7 @@ pub struct FullInputInfo<'a> {
 }
 
 fn final_report(
-    dialect: Dialect,
+    spelling_heading: &str,
     batch_mode: bool,
     all_lint_kinds: HashMap<LintKind, usize>,
     all_rules: HashMap<String, usize>,
@@ -500,7 +541,7 @@ fn final_report(
             })
             .collect();
 
-        println!("All files Spelling::SpellCheck (For dialect: {})", dialect);
+        println!("All files {spelling_heading}");
         print_formatted_items(spelling_vec, color);
     }
 }

@@ -36,6 +36,7 @@ pub fn lint_one_input(
     current: InputInfo,
 ) -> anyhow::Result<LintOneResult> {
     let LintOptions {
+        language,
         count: _,
         ignore,
         only,
@@ -84,8 +85,9 @@ pub fn lint_one_input(
                 }
             }
             Ok((doc, source)) => {
-                // Create the Lint Group from which we will lint this input, using the combined dictionary and the specified dialect
-                let mut lint_group = LintGroup::new_curated(merged_dictionary.into(), *dialect);
+                // Create the Lint Group from which we will lint this input, using the combined
+                // dictionary and the rules of the selected language (and dialect, for English).
+                let mut lint_group = language.lint_group(Arc::new(merged_dictionary), *dialect);
 
                 for pack in weirpacks {
                     let pack_group = pack.to_lint_group()?;
@@ -108,7 +110,8 @@ pub fn lint_one_input(
                 // Extract the lint kinds and rules etc. for reporting
                 (lint_kinds, lint_rules) = count_lint_kinds_and_rules(&named_lints);
                 lint_kind_rule_pairs = collect_lint_kind_rule_pairs(&named_lints);
-                spellos = collect_spellos(&named_lints, doc.get_source());
+                spellos =
+                    collect_spellos(&named_lints, doc.get_source(), language.spell_check_rule());
 
                 // Build JSON result if in JSON mode
                 if matches!(report_mode, ReportStyle::Json) {
@@ -246,9 +249,10 @@ fn collect_lint_kind_rule_pairs(
 fn collect_spellos(
     named_lints: &BTreeMap<String, Vec<Lint>>,
     source: &[char],
+    spell_check_rule: &str,
 ) -> HashMap<String, usize> {
     named_lints
-        .get("SpellCheck")
+        .get(spell_check_rule)
         .into_iter()
         .flatten()
         .map(|lint| lint.get_str(source))
