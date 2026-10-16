@@ -1,4 +1,4 @@
-use crate::config::Integration;
+use crate::config::{Integration, WritingLanguage};
 use harper_core::{Dialect, IgnoredLints, linting::FlatConfig};
 use serde::{Deserialize, Serialize};
 
@@ -9,6 +9,7 @@ pub enum Request {
     GetLintConfig,
     GetDictionary,
     GetDialect,
+    GetWritingLanguage,
     GetDebounceMs,
     GetIgnoredLints,
     GetIntegrations,
@@ -28,6 +29,7 @@ pub enum Response {
     GetLintConfig { config: FlatConfig },
     GetDictionary { words: Vec<String> },
     GetDialect { dialect: Dialect },
+    GetWritingLanguage { writing_language: WritingLanguage },
     GetDebounceMs { debounce_ms: u64 },
     GetIgnoredLints { ignored_lints: IgnoredLints },
     GetIntegrations { integrations: Vec<Integration> },

@@ -3824,6 +3824,7 @@ dependencies = [
  "egui_commonmark",
  "harper-core",
  "harper-dictionary-wordlist",
+ "harper-papiamento",
  "is-macro",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
@@ -3856,6 +3857,15 @@ dependencies = [
  "harper-core",
  "itertools 0.14.0",
  "tokio",
+]
+
+[[package]]
+name = "harper-papiamento"
+version = "2.12.0"
+dependencies = [
+ "harper-core",
+ "hashbrown 0.16.1",
+ "serde_json",
 ]
 
 [[package]]

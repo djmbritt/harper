@@ -2,8 +2,8 @@
 import { Button, Checkbox, CheckIcon, Input, Select, SettingRow } from 'components';
 import type { Dialect } from 'harper.js';
 import { onMount } from 'svelte';
-import { Client } from '$lib/client';
-import { DIALECT_OPTIONS } from '../settings-data';
+import { Client, type RustWritingLanguage } from '$lib/client';
+import { DIALECT_OPTIONS, WRITING_LANGUAGE_OPTIONS } from '../settings-data';
 
 const DialectValue = {
 	American: 0,
@@ -16,6 +16,10 @@ const DialectValue = {
 let menuBar = true;
 let launchAtStartup = false;
 let autoUpdate = true;
+let writingLanguage = 'English';
+let isWritingLanguageLoading = true;
+let isWritingLanguageSaving = false;
+let writingLanguageError = '';
 let dialect = 'american';
 let isDialectLoading = true;
 let isDialectSaving = false;
@@ -37,6 +41,7 @@ let isDebounceSaving = false;
 let debounceError = '';
 
 onMount(() => {
+	void loadWritingLanguage();
 	void loadDialect();
 	void loadLaunchAtStartup();
 	void loadAutoUpdate();
@@ -44,6 +49,10 @@ onMount(() => {
 	void loadDebounceMs();
 
 	const refreshSettings = () => {
+		if (!isWritingLanguageSaving) {
+			void loadWritingLanguage();
+		}
+
 		if (!isDialectSaving) {
 			void loadDialect();
 		}
@@ -71,6 +80,36 @@ onMount(() => {
 		window.removeEventListener('focus', refreshSettings);
 	};
 });
+
+async function loadWritingLanguage() {
+	isWritingLanguageLoading = true;
+	writingLanguageError = '';
+
+	try {
+		writingLanguage = await Client.getWritingLanguage();
+	} catch (error) {
+		writingLanguageError = `Unable to load language: ${error}`;
+	} finally {
+		isWritingLanguageLoading = false;
+	}
+}
+
+async function setWritingLanguage(value: string) {
+	const previousWritingLanguage = writingLanguage;
+
+	writingLanguage = value;
+	isWritingLanguageSaving = true;
+	writingLanguageError = '';
+
+	try {
+		await Client.setWritingLanguage(value as RustWritingLanguage);
+	} catch (error) {
+		writingLanguage = previousWritingLanguage;
+		writingLanguageError = `Unable to save language: ${error}`;
+	} finally {
+		isWritingLanguageSaving = false;
+	}
+}
 
 async function loadDialect() {
 	isDialectLoading = true;
@@ -352,15 +391,43 @@ function settingsValueToDialect(value: string): Dialect {
         <div class="stanza">
           <div class="eyebrow">Language</div>
           <p class="section-copy">
-            Choose the dialect Harper uses to check spelling and grammar.
+            Choose the language Harper checks, and for English, the dialect it uses to check
+            spelling and grammar.
           </p>
+          <div class="inline-row">
+            <label for="writing-language">Language:</label>
+            <Select
+              unstyled
+              id="writing-language"
+              class="select wide"
+              disabled={isWritingLanguageLoading || isWritingLanguageSaving}
+              bind:value={writingLanguage}
+              on:change={(event) =>
+                setWritingLanguage((event.detail.currentTarget as HTMLSelectElement).value)}
+            >
+              {#each WRITING_LANGUAGE_OPTIONS as option}
+                <option value={option.value}>{option.label}</option>
+              {/each}
+            </Select>
+          </div>
+          {#if isWritingLanguageLoading}
+            <p class="result-summary">Loading language...</p>
+          {:else if writingLanguageError}
+            <p class="result-summary">{writingLanguageError}</p>
+          {:else if isWritingLanguageSaving}
+            <p class="result-summary">Saving language...</p>
+          {:else if writingLanguage === 'Papiamento'}
+            <p class="result-summary">
+              Papiamento is checked with the Aruban spelling of "Ortografia di Papiamento" (2018).
+            </p>
+          {/if}
           <div class="inline-row">
             <label for="dialect">English dialect:</label>
             <Select
               unstyled
               id="dialect"
               class="select wide"
-              disabled={isDialectLoading || isDialectSaving}
+              disabled={isDialectLoading || isDialectSaving || writingLanguage !== 'English'}
               bind:value={dialect}
               on:change={(event) => setDialect((event.detail.currentTarget as HTMLSelectElement).value)}
             >

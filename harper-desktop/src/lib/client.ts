@@ -7,9 +7,20 @@ import type {
 	Linter,
 	LocalLinter as LocalLinterType,
 	StructuredLintConfig,
+	WritingLanguage,
 } from 'harper.js';
 
 type RustDialect = 'American' | 'British' | 'Australian' | 'Canadian' | 'Indian';
+
+/** The natural language Harper checks, as the Rust side names it. */
+export type RustWritingLanguage = 'English' | 'Papiamento';
+
+/** Numeric values of harper.js' `WritingLanguage` enum, so that it does not have to be
+ * loaded to convert. Must match the order of `WritingLanguage` in harper-wasm. */
+const WritingLanguageValue = {
+	English: 0,
+	Papiamento: 1,
+} as const;
 
 const DialectValue = {
 	American: 0,
@@ -63,15 +74,16 @@ export class Client {
 		return await invoke<LintConfig>('get_lint_config');
 	}
 
+	/** The default state of every rule, for all languages. */
 	static async getDefaultLintConfig(): Promise<LintConfig> {
-		const configLinter = await getConfigLinter();
-
-		return JSON.parse(await configLinter.getDefaultLintConfigAsJSON()) as LintConfig;
+		return await invoke<LintConfig>('get_default_lint_config');
 	}
 
+	/** The rules of the selected language, grouped and labelled. */
 	static async getStructuredLintConfig(): Promise<StructuredLintConfig> {
 		const configLinter = await getConfigLinter();
 
+		await configLinter.setWritingLanguage(await Client.getHarperWritingLanguage());
 		await configLinter.setLintConfigWithJSON(JSON.stringify(await Client.getLintConfig()));
 
 		return JSON.parse(await configLinter.getStructuredLintConfigJSON()) as StructuredLintConfig;
@@ -83,6 +95,19 @@ export class Client {
 
 	static async setDialect(dialect: Dialect): Promise<void> {
 		await invoke('set_dialect', { dialect: dialectToRustDialect(dialect) });
+	}
+
+	static async getWritingLanguage(): Promise<RustWritingLanguage> {
+		return await invoke<RustWritingLanguage>('get_writing_language');
+	}
+
+	static async setWritingLanguage(writingLanguage: RustWritingLanguage): Promise<void> {
+		await invoke('set_writing_language', { writingLanguage });
+	}
+
+	/** The selected language as harper.js' `WritingLanguage`, to configure a `Linter`. */
+	static async getHarperWritingLanguage(): Promise<WritingLanguage> {
+		return WritingLanguageValue[await Client.getWritingLanguage()] as WritingLanguage;
 	}
 
 	static async getDebounceMs(): Promise<number> {

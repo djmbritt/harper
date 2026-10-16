@@ -1,22 +1,27 @@
 mod error;
 mod integration;
+mod writing_language;
 
 use crate::{PlatformBroker, os_broker::OsBroker};
 pub use error::Error;
 use harper_core::{
     Dialect, IgnoredLints,
     linting::{FlatConfig, LintGroup},
-    spell::{FstDictionary, MergedDictionary, MutableDictionary},
+    spell::{MergedDictionary, MutableDictionary},
 };
 use harper_dictionary_wordlist::{load_dict, save_dict};
 pub use integration::Integration;
 use serde::de::{DeserializeOwned, Error as _};
 use std::{fs, io, path::PathBuf, sync::Arc};
+pub use writing_language::WritingLanguage;
 
 /// User-controlled app state needed by Tauri commands and the highlighter process.
 pub struct Config {
     pub mutable_dictionary: MutableDictionary,
     pub dialect: Dialect,
+    /// The natural language to check. Saved separately from `dialect`, which only applies
+    /// to English.
+    pub writing_language: WritingLanguage,
     pub ignored_lints: IgnoredLints,
     pub lint_config: FlatConfig,
     pub integrations: Vec<Integration>,
@@ -36,8 +41,9 @@ impl Config {
         Self {
             mutable_dictionary: MutableDictionary::new(),
             dialect: Self::detect_system_dialect(),
+            writing_language: WritingLanguage::default(),
             ignored_lints: IgnoredLints::new(),
-            lint_config: FlatConfig::new_curated(),
+            lint_config: WritingLanguage::default_lint_config(),
             integrations: Integration::curated_integrations(),
             auto_enable_new_apps: false,
             onboarding_completed: false,
@@ -145,28 +151,33 @@ impl Config {
         let dictionary_path = Self::dictionary_path().ok_or(Error::ConfigDirUnavailable)?;
         let serialized = fs::read_to_string(main_path)?;
         let mut config = Self::deserialize_main(&serialized)?;
-        config.lint_config.fill_with_curated();
+        WritingLanguage::fill_lint_config(&mut config.lint_config);
         config.mutable_dictionary = load_dict(dictionary_path, config.dialect).await?;
 
         Ok(config)
     }
 
     pub fn dictionary_from_user_dictionary(
+        writing_language: WritingLanguage,
         user_dictionary: MutableDictionary,
     ) -> Arc<MergedDictionary> {
         let mut dictionary = MergedDictionary::new();
-        dictionary.add_dictionary(FstDictionary::curated());
+        dictionary.add_dictionary(writing_language.curated_dictionary());
         dictionary.add_dictionary(Arc::new(user_dictionary));
 
         Arc::new(dictionary)
     }
 
     fn create_dictionary(&self) -> Arc<MergedDictionary> {
-        Self::dictionary_from_user_dictionary(self.mutable_dictionary.clone())
+        Self::dictionary_from_user_dictionary(
+            self.writing_language,
+            self.mutable_dictionary.clone(),
+        )
     }
 
     pub fn create_linter(&self) -> LintGroup {
-        LintGroup::new_curated(self.create_dictionary(), self.dialect)
+        self.writing_language
+            .create_lint_group(self.create_dictionary(), self.dialect)
             .with_lint_config(self.lint_config.clone())
     }
 
@@ -189,6 +200,7 @@ impl Config {
     fn serialize_main(&self) -> serde_json::Result<String> {
         serde_json::to_string(&serde_json::json!({
             "dialect": &self.dialect,
+            "writing_language": &self.writing_language,
             "ignored_lints": &self.ignored_lints,
             "lint_config": &self.lint_config,
             "integrations": &self.integrations,
@@ -211,6 +223,8 @@ impl Config {
         Ok(Self {
             mutable_dictionary: MutableDictionary::new(),
             dialect: deserialize_field(object, "dialect")?,
+            writing_language: deserialize_optional_field(object, "writing_language")?
+                .unwrap_or_default(),
             ignored_lints: deserialize_field(object, "ignored_lints")?,
             lint_config: deserialize_field(object, "lint_config")?,
             integrations: deserialize_optional_field(object, "integrations")?
@@ -273,7 +287,7 @@ impl Default for Config {
 
 #[cfg(test)]
 mod tests {
-    use super::{Config, Integration};
+    use super::{Config, Integration, WritingLanguage};
     use harper_core::DictWordMetadata;
 
     #[test]
@@ -309,6 +323,7 @@ mod tests {
         let deserialized = Config::deserialize_main(&serialized).unwrap();
 
         assert_eq!(deserialized.dialect, config.dialect);
+        assert_eq!(deserialized.writing_language, config.writing_language);
         assert_eq!(deserialized.lint_config, config.lint_config);
         assert_eq!(deserialized.integrations, config.integrations);
         assert_eq!(
@@ -368,6 +383,43 @@ mod tests {
         let deserialized = Config::deserialize_main(&value.to_string()).unwrap();
 
         assert!(deserialized.highlighter_service_enabled);
+    }
+
+    #[test]
+    fn deserialize_main_uses_english_when_writing_language_missing() {
+        let config = Config::new();
+        let mut value =
+            serde_json::from_str::<serde_json::Value>(&config.serialize_main().unwrap()).unwrap();
+        value.as_object_mut().unwrap().remove("writing_language");
+
+        let deserialized = Config::deserialize_main(&value.to_string()).unwrap();
+
+        assert_eq!(deserialized.writing_language, WritingLanguage::English);
+    }
+
+    #[test]
+    fn deserialize_main_restores_papiamento() {
+        let mut config = Config::new();
+        config.writing_language = WritingLanguage::Papiamento;
+
+        let deserialized = Config::deserialize_main(&config.serialize_main().unwrap()).unwrap();
+
+        assert_eq!(deserialized.writing_language, WritingLanguage::Papiamento);
+    }
+
+    #[test]
+    fn create_linter_follows_writing_language() {
+        use harper_core::Document;
+
+        let mut config = Config::new();
+        config.writing_language = WritingLanguage::Papiamento;
+        let dictionary = config.create_dictionary();
+        let document = Document::new_markdown_default("Sin embargo mi ta bay cas.", &dictionary);
+
+        let lints = config.create_linter().organized_lints(&document);
+
+        assert!(lints.contains_key("PapiamentoClosedCompounds"));
+        assert!(!lints.contains_key("SpellCheck"));
     }
 
     #[test]

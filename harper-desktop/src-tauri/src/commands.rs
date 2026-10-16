@@ -1,7 +1,7 @@
 //! This module centralizes all the Rust commands to be made available to the JavaScript
 //! environment. Use [`application_message_handler`] to load them into the Tauri runtime.
 
-use crate::config::Config;
+use crate::config::{Config, WritingLanguage};
 use crate::desktop_updater::{DesktopUpdater, UpdateResult};
 use crate::highlighter_service::HighlighterService;
 use crate::os_broker::{AccessibilityPermissionStatus, AppSearchResult, OsBroker};
@@ -20,7 +20,9 @@ use tokio::sync::Mutex;
 pub fn application_message_handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool {
     tauri::generate_handler![
         get_lint_config,
+        get_default_lint_config,
         get_dialect,
+        get_writing_language,
         get_debounce_ms,
         set_debounce_ms,
         get_auto_update,
@@ -31,6 +33,7 @@ pub fn application_message_handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool {
         get_onboarding_completed,
         set_onboarding_completed,
         set_dialect,
+        set_writing_language,
         set_lint_config,
         get_dictionary,
         set_dictionary,
@@ -55,14 +58,28 @@ pub fn application_message_handler<R: Runtime>() -> impl Fn(Invoke<R>) -> bool {
 #[tauri::command]
 async fn get_lint_config(config: State<'_, Arc<Mutex<Config>>>) -> Result<FlatConfig, String> {
     let mut lint_config = config.lock().await.lint_config.clone();
-    lint_config.fill_with_curated();
+    WritingLanguage::fill_lint_config(&mut lint_config);
 
     Ok(lint_config)
+}
+
+/// The default rule configuration for every language, so that rules of the language that is
+/// not selected are not shown as customized.
+#[tauri::command]
+async fn get_default_lint_config() -> Result<FlatConfig, String> {
+    Ok(WritingLanguage::default_lint_config())
 }
 
 #[tauri::command]
 async fn get_dialect(config: State<'_, Arc<Mutex<Config>>>) -> Result<Dialect, String> {
     Ok(config.lock().await.dialect)
+}
+
+#[tauri::command]
+async fn get_writing_language(
+    config: State<'_, Arc<Mutex<Config>>>,
+) -> Result<WritingLanguage, String> {
+    Ok(config.lock().await.writing_language)
 }
 
 #[tauri::command]
@@ -164,12 +181,29 @@ async fn set_dialect(
 }
 
 #[tauri::command]
+async fn set_writing_language(
+    writing_language: WritingLanguage,
+    config: State<'_, Arc<Mutex<Config>>>,
+) -> Result<(), String> {
+    let mut config = config.lock().await;
+    let previous_value = config.writing_language;
+    config.writing_language = writing_language;
+
+    if let Err(error) = config.save_to_system().await {
+        config.writing_language = previous_value;
+        return Err(error.to_string());
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 async fn set_lint_config(
     lint_config: FlatConfig,
     config: State<'_, Arc<Mutex<Config>>>,
 ) -> Result<(), String> {
     let mut lint_config = lint_config;
-    lint_config.fill_with_curated();
+    WritingLanguage::fill_lint_config(&mut lint_config);
 
     let mut config = config.lock().await;
     config.lint_config = lint_config;

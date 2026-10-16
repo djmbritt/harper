@@ -60,6 +60,9 @@ where
             Request::GetDialect => Response::GetDialect {
                 dialect: self.config.lock().await.dialect,
             },
+            Request::GetWritingLanguage => Response::GetWritingLanguage {
+                writing_language: self.config.lock().await.writing_language,
+            },
             Request::GetDebounceMs => Response::GetDebounceMs {
                 debounce_ms: self.config.lock().await.debounce_ms,
             },

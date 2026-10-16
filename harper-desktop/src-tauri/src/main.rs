@@ -11,7 +11,7 @@ use self::highlighter_service::HighlighterService;
 use self::tray::set_up_tray_menu;
 use crate::args::{Args, Command};
 use crate::communication::{Client, ProtocolError};
-use crate::config::{Config, Integration};
+use crate::config::{Config, Integration, WritingLanguage};
 use crate::debounce::{DebounceState, DebounceStatus};
 use clap::Parser;
 use harper_core::{
@@ -271,6 +271,7 @@ pub fn run_highlighter(has_parent: bool) {
     let ignored_lints = Rc::new(RefCell::new(startup_config.ignored_lints));
     let user_dictionary = Rc::new(RefCell::new(startup_config.mutable_dictionary));
     let dialect = Rc::new(RefCell::new(startup_config.dialect));
+    let writing_language = Rc::new(RefCell::new(startup_config.writing_language));
     let integrations = Arc::new(StdMutex::new(IntegrationState {
         integrations: startup_config.integrations,
         auto_enable_new_apps: startup_config.auto_enable_new_apps,
@@ -302,6 +303,7 @@ pub fn run_highlighter(has_parent: bool) {
     let lint_ignored_lints = ignored_lints.clone();
     let lint_linter = linter.clone();
     let lint_user_dictionary = user_dictionary.clone();
+    let lint_writing_language = writing_language.clone();
     let lint_debounce_ms = debounce_ms.clone();
     let lint_debounce_state = Rc::new(RefCell::new(DebounceState::default()));
 
@@ -314,6 +316,7 @@ pub fn run_highlighter(has_parent: bool) {
     let dictionary_user_dictionary = user_dictionary.clone();
     let dictionary_linter = linter.clone();
     let dictionary_dialect = dialect.clone();
+    let dictionary_writing_language = writing_language.clone();
     let dictionary_debounce_ms = debounce_ms.clone();
 
     let disable_client = client.clone();
@@ -328,6 +331,7 @@ pub fn run_highlighter(has_parent: bool) {
     let refresh_ignored_lints = ignored_lints.clone();
     let refresh_user_dictionary = user_dictionary.clone();
     let refresh_dialect = dialect.clone();
+    let refresh_writing_language = writing_language.clone();
     let refresh_integrations = integrations.clone();
     let refresh_debounce_ms = debounce_ms.clone();
     let refresh_linter = linter.clone();
@@ -341,8 +345,10 @@ pub fn run_highlighter(has_parent: bool) {
             DebounceStatus::Ready => {}
         }
 
-        let dictionary =
-            Config::dictionary_from_user_dictionary(lint_user_dictionary.borrow().clone());
+        let dictionary = Config::dictionary_from_user_dictionary(
+            *lint_writing_language.borrow(),
+            lint_user_dictionary.borrow().clone(),
+        );
         let doc = Document::new_markdown_default(text, &dictionary);
         let mut organized_lints = lint_linter.borrow_mut().organized_lints(&doc);
 
@@ -382,6 +388,7 @@ pub fn run_highlighter(has_parent: bool) {
         let config = Config {
             mutable_dictionary: dictionary_user_dictionary.borrow().clone(),
             dialect: *dictionary_dialect.borrow(),
+            writing_language: *dictionary_writing_language.borrow(),
             ignored_lints: IgnoredLints::new(),
             lint_config,
             integrations: Vec::new(),
@@ -444,6 +451,7 @@ pub fn run_highlighter(has_parent: bool) {
                 &refresh_ignored_lints,
                 &refresh_user_dictionary,
                 &refresh_dialect,
+                &refresh_writing_language,
                 &refresh_integrations,
                 &refresh_debounce_ms,
                 &refresh_linter,
@@ -516,6 +524,7 @@ fn fetch_highlighter_config(
 ) -> Result<Config, ProtocolError> {
     runtime.block_on(async {
         let dialect = client.get_dialect().await?;
+        let writing_language = client.get_writing_language().await?;
         let mutable_dictionary = client.get_dictionary().await?;
         let ignored_lints = client.get_ignored_lints().await?;
         let lint_config = client.get_lint_config().await?;
@@ -525,6 +534,7 @@ fn fetch_highlighter_config(
 
         Ok(Config {
             dialect,
+            writing_language,
             mutable_dictionary,
             ignored_lints,
             lint_config,
@@ -539,11 +549,13 @@ fn fetch_highlighter_config(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_highlighter_config(
     config: Config,
     ignored_lints: &Rc<RefCell<IgnoredLints>>,
     user_dictionary: &Rc<RefCell<MutableDictionary>>,
     dialect: &Rc<RefCell<Dialect>>,
+    writing_language: &Rc<RefCell<WritingLanguage>>,
     integrations: &Arc<StdMutex<IntegrationState>>,
     debounce_ms: &Rc<RefCell<u64>>,
     linter: &Rc<RefCell<LintGroup>>,
@@ -552,6 +564,7 @@ fn apply_highlighter_config(
     *ignored_lints.borrow_mut() = config.ignored_lints;
     *user_dictionary.borrow_mut() = config.mutable_dictionary;
     *dialect.borrow_mut() = config.dialect;
+    *writing_language.borrow_mut() = config.writing_language;
     match integrations.lock() {
         Ok(mut integrations) => {
             *integrations = IntegrationState {

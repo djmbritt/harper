@@ -10,6 +10,7 @@ use tokio::{
 use super::error::ProtocolError;
 use super::framing::write_message;
 use super::message::{Request, Response};
+use crate::config::WritingLanguage;
 
 /// Highlighter-side protocol endpoint for requesting state from the Tauri server over async I/O.
 pub struct Client<R, W> {
@@ -66,6 +67,15 @@ where
             Response::GetDialect { dialect } => Ok(dialect),
             _ => Err(ProtocolError::UnexpectedResponse {
                 expected: "GetDialect",
+            }),
+        }
+    }
+
+    pub async fn get_writing_language(&mut self) -> Result<WritingLanguage, ProtocolError> {
+        match self.send_request(Request::GetWritingLanguage).await? {
+            Response::GetWritingLanguage { writing_language } => Ok(writing_language),
+            _ => Err(ProtocolError::UnexpectedResponse {
+                expected: "GetWritingLanguage",
             }),
         }
     }

@@ -118,6 +118,11 @@ export interface SettingsState {
 	weirpacks: Weirpack[];
 }
 
+export const WRITING_LANGUAGE_OPTIONS = [
+	{ value: 'English', label: 'English' },
+	{ value: 'Papiamento', label: 'Papiamento (Aruba)' },
+];
+
 export const DIALECT_OPTIONS = [
 	{ value: 'american', label: 'American English' },
 	{ value: 'british', label: 'British English' },
