@@ -1,4 +1,4 @@
-import type { Dialect, Lint, Suggestion } from 'harper-wasm';
+import type { Dialect, Lint, Suggestion, WritingLanguage } from 'harper-wasm';
 import type { BinaryModule } from './BinaryModule';
 import type { LintConfig, LintOptions, StructuredLintConfig } from './main';
 import type Summary from './Summary';
@@ -123,6 +123,14 @@ export default interface Linter {
 	/** Get the dialect of English this linter was constructed for. */
 	setDialect(dialect: Dialect): Promise<void>;
 
+	/** Get the natural language this linter checks. Defaults to English. */
+	getWritingLanguage(): Promise<WritingLanguage>;
+
+	/** Switch the natural language this linter checks, for example to Papiamento.
+	 * This swaps the curated dictionary and the rules; added words, ignored lints and the
+	 * rule configuration are kept. */
+	setWritingLanguage(writingLanguage: WritingLanguage): Promise<void>;
+
 	/** Summarize the linter's usage statistics.
 	 * You may optionally pass in a start and/or end time.
 	 *
@@ -156,4 +164,6 @@ export interface LinterInit {
 	binary: BinaryModule;
 	/** The dialect of English Harper should use. If omitted, Harper will default to American English. */
 	dialect?: Dialect;
+	/** The natural language Harper should check. If omitted, Harper will check English. */
+	writingLanguage?: WritingLanguage;
 }

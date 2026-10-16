@@ -8,7 +8,7 @@ import Serializer, { isSerializedRequest, type SerializedRequest } from '../Seri
 self.postMessage('ready');
 
 self.onmessage = (e) => {
-	const [binaryUrl, dialect, glueFlavor] = e.data;
+	const [binaryUrl, dialect, glueFlavor, writingLanguage] = e.data;
 	if (typeof binaryUrl !== 'string') {
 		throw new TypeError(`Expected binary to be a string of url but got ${typeof binaryUrl}.`);
 	}
@@ -17,7 +17,7 @@ self.onmessage = (e) => {
 	}
 	const binary = SuperBinaryModule.create(binaryUrl, glueFlavor as WasmGlueFlavor | undefined);
 	const serializer = new Serializer(binary);
-	const linter = new LocalLinter({ binary, dialect });
+	const linter = new LocalLinter({ binary, dialect, writingLanguage });
 
 	async function processRequest(v: SerializedRequest) {
 		const { procName, args } = await serializer.deserialize(v);

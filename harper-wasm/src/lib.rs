@@ -9,7 +9,7 @@ use std::io::Cursor;
 use std::sync::Arc;
 
 use harper_core::language_detection::is_doc_likely_english;
-use harper_core::linting::{HumanReadableStructuredConfig, StructuredConfig};
+use harper_core::linting::{FlatConfig, HumanReadableStructuredConfig, StructuredConfig};
 use harper_core::linting::{LintGroup, Linter as _};
 use harper_core::parsers::{IsolateEnglish, Markdown, Mask, OopsAllHeadings, Parser, PlainEnglish};
 use harper_core::remove_overlaps_map;
@@ -95,6 +95,69 @@ pub enum Dialect {
     Indian,
 }
 
+/// The natural language to check. Not to be confused with [`Language`], which is the markup
+/// format of the text.
+#[wasm_bindgen]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WritingLanguage {
+    #[default]
+    English,
+    /// Aruban Papiamento, following "Ortografia di Papiamento" (AB 2018 no. 68).
+    Papiamento,
+}
+
+impl WritingLanguage {
+    /// The curated dictionary for this language.
+    fn curated_dictionary(self) -> Arc<FstDictionary> {
+        match self {
+            WritingLanguage::English => FstDictionary::curated(),
+            WritingLanguage::Papiamento => harper_papiamento::dictionary::curated(),
+        }
+    }
+
+    /// A lint group with this language's rules, and an empty configuration.
+    fn create_lint_group(self, dictionary: Arc<MergedDictionary>, dialect: Dialect) -> LintGroup {
+        match self {
+            WritingLanguage::English => {
+                LintGroup::new_curated_empty_config(dictionary, dialect.into())
+            }
+            WritingLanguage::Papiamento => {
+                let mut group = harper_papiamento::lint_group(dictionary);
+                group.config.clear();
+                group
+            }
+        }
+    }
+
+    /// Fill the rules that `config` leaves unset with this language's defaults.
+    fn fill_with_defaults(self, config: &mut FlatConfig) {
+        match self {
+            WritingLanguage::English => config.fill_with_curated(),
+            WritingLanguage::Papiamento => harper_papiamento::fill_with_defaults(config),
+        }
+    }
+
+    /// The labelled rule settings for this language.
+    fn structured_config(self) -> StructuredConfig {
+        match self {
+            WritingLanguage::English => StructuredConfig::curated(),
+            WritingLanguage::Papiamento => harper_papiamento::structured_config(),
+        }
+    }
+
+    /// The default state of every rule for this language.
+    fn default_lint_config(self) -> FlatConfig {
+        match self {
+            // The same as the global `get_default_lint_config_as_json`.
+            WritingLanguage::English => {
+                LintGroup::new_curated(MutableDictionary::new().into(), Dialect::American.into())
+                    .config
+            }
+            WritingLanguage::Papiamento => harper_papiamento::default_lint_config(),
+        }
+    }
+}
+
 impl From<Dialect> for harper_core::Dialect {
     fn from(dialect: Dialect) -> Self {
         match dialect {
@@ -118,6 +181,7 @@ pub struct Linter {
     weirpack_dictionaries: Vec<Arc<MutableDictionary>>,
     ignored_lints: IgnoredLints,
     dialect: Dialect,
+    writing_language: WritingLanguage,
     stats: Stats,
 }
 
@@ -133,8 +197,12 @@ impl Linter {
     /// Note that this can mean constructing the curated dictionary, which is the most expensive operation
     /// in Harper.
     pub fn new(dialect: Dialect) -> Self {
-        let dictionary = Self::construct_merged_dict(&[Arc::new(MutableDictionary::default())]);
-        let lint_group = LintGroup::new_curated_empty_config(dictionary.clone(), dialect.into());
+        let writing_language = WritingLanguage::default();
+        let dictionary = Self::construct_merged_dict(
+            writing_language,
+            &[Arc::new(MutableDictionary::default())],
+        );
+        let lint_group = writing_language.create_lint_group(dictionary.clone(), dialect);
 
         Self {
             lint_group,
@@ -143,7 +211,22 @@ impl Linter {
             dictionary,
             ignored_lints: IgnoredLints::default(),
             dialect,
+            writing_language,
             stats: Stats::default(),
+        }
+    }
+
+    /// Get the natural language this linter checks.
+    pub fn get_writing_language(&self) -> WritingLanguage {
+        self.writing_language
+    }
+
+    /// Switch the natural language this linter checks. This swaps the curated dictionary and
+    /// the rules; the user dictionary, ignored lints and the rule configuration are kept.
+    pub fn set_writing_language(&mut self, writing_language: WritingLanguage) {
+        if self.writing_language != writing_language {
+            self.writing_language = writing_language;
+            self.synchronize_lint_dict();
         }
     }
 
@@ -155,20 +238,25 @@ impl Linter {
         let mut constituent_dictionaries = vec![Arc::new(self.user_dictionary.clone())];
         constituent_dictionaries.extend(self.weirpack_dictionaries.iter().cloned());
 
-        self.dictionary = Self::construct_merged_dict(&constituent_dictionaries);
+        self.dictionary =
+            Self::construct_merged_dict(self.writing_language, &constituent_dictionaries);
 
-        self.lint_group =
-            LintGroup::new_curated_empty_config(self.dictionary.clone(), self.dialect.into());
+        self.lint_group = self
+            .writing_language
+            .create_lint_group(self.dictionary.clone(), self.dialect);
 
         self.lint_group.config.merge_from(lint_config);
     }
 
     /// Construct the actual dictionary to be used for linting and parsing from the curated dictionary
     /// and any other runtime-provided dictionaries.
-    fn construct_merged_dict(dicts: &[Arc<impl Dictionary + 'static>]) -> Arc<MergedDictionary> {
+    fn construct_merged_dict(
+        writing_language: WritingLanguage,
+        dicts: &[Arc<impl Dictionary + 'static>],
+    ) -> Arc<MergedDictionary> {
         let mut lint_dict = MergedDictionary::new();
 
-        lint_dict.add_dictionary(FstDictionary::curated());
+        lint_dict.add_dictionary(writing_language.curated_dictionary());
 
         for dict in dicts {
             lint_dict.add_dictionary(Arc::new(dict.clone()));
@@ -227,7 +315,7 @@ impl Linter {
     }
 
     pub fn get_structured_lint_config_as_json(&self) -> String {
-        let mut config = StructuredConfig::curated();
+        let mut config = self.writing_language.structured_config();
         config.copy_from_flat_config(&self.lint_group.config);
 
         let human = HumanReadableStructuredConfig::from_structured_config(&config);
@@ -266,7 +354,7 @@ impl Linter {
     pub fn get_structured_lint_config_as_object(&self) -> JsValue {
         let serializer = Serializer::json_compatible();
 
-        let mut config = StructuredConfig::curated();
+        let mut config = self.writing_language.structured_config();
         config.copy_from_flat_config(&self.lint_group.config);
 
         let human = HumanReadableStructuredConfig::from_structured_config(&config);
@@ -345,7 +433,8 @@ impl Linter {
 
     fn with_curated_config<T>(&mut self, lint: impl FnOnce(&mut LintGroup) -> T) -> T {
         let config = self.lint_group.config.clone();
-        self.lint_group.config.fill_with_curated();
+        self.writing_language
+            .fill_with_defaults(&mut self.lint_group.config);
 
         let output = lint(&mut self.lint_group);
 
@@ -485,6 +574,11 @@ impl Linter {
     /// Get the dialect this struct was constructed for.
     pub fn get_dialect(&self) -> Dialect {
         self.dialect
+    }
+
+    /// Get the default rule configuration for the language this linter checks.
+    pub fn get_default_lint_config_as_json(&self) -> String {
+        serde_json::to_string(&self.writing_language.default_lint_config()).unwrap()
     }
 
     /// Apply a suggestion from a given lint.
@@ -810,6 +904,100 @@ mod tests {
 
         let lints = linter.lint(text, Language::Plain, false, None, true, false);
         assert!(lints.is_empty());
+    }
+
+    fn papiamento_linter() -> Linter {
+        let mut linter = Linter::new(Dialect::American);
+        linter.set_writing_language(WritingLanguage::Papiamento);
+        linter
+    }
+
+    fn lint_plain(linter: &mut Linter, text: &str) -> Vec<Lint> {
+        linter.lint(text.to_owned(), Language::Plain, false, None, true, false)
+    }
+
+    #[test]
+    fn defaults_to_english() {
+        let linter = Linter::new(Dialect::American);
+        assert_eq!(linter.get_writing_language(), WritingLanguage::English);
+    }
+
+    #[test]
+    fn papiamento_text_is_clean_in_papiamento() {
+        let mut linter = papiamento_linter();
+        let lints = lint_plain(&mut linter, "Bonbini na Aruba! Mi ta papia Papiamento.");
+        assert!(
+            lints.is_empty(),
+            "{:?}",
+            lints.iter().map(|l| l.message()).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn papiamento_rules_run_after_switching() {
+        let mut linter = papiamento_linter();
+        let groups = linter.organized_lints(
+            "Sin embargo mi ta bay kas.".to_owned(),
+            Language::Plain,
+            false,
+            None,
+            true,
+            false,
+        );
+        let names: Vec<&str> = groups.iter().map(|g| g.group.as_str()).collect();
+        assert!(names.contains(&"PapiamentoClosedCompounds"), "{names:?}");
+        assert!(names.contains(&"PapiamentoSpellCheck"), "{names:?}");
+    }
+
+    #[test]
+    fn english_rules_do_not_run_on_papiamento() {
+        let mut linter = papiamento_linter();
+        let lints = lint_plain(&mut linter, "This is an test.");
+        // English words are not in the Papiamento vocabulary, but no English grammar rule
+        // (like AnA) should fire.
+        assert!(lints.iter().all(|l| l.lint_kind() != "Miscellaneous"));
+    }
+
+    #[test]
+    fn switching_back_restores_english() {
+        let mut linter = papiamento_linter();
+        linter.set_writing_language(WritingLanguage::English);
+        assert!(lint_plain(&mut linter, "This is a grammatically correct sentence.").is_empty());
+    }
+
+    #[test]
+    fn keeps_user_words_and_config_when_switching() {
+        let mut linter = Linter::new(Dialect::American);
+        linter.import_words(vec!["Tinchiwordo".to_owned()]);
+        linter
+            .set_lint_config_from_json(r#"{"PapiamentoNumerals": false}"#.to_owned())
+            .unwrap();
+        linter.set_writing_language(WritingLanguage::Papiamento);
+
+        assert!(lint_plain(&mut linter, "Tinchiwordo.").is_empty());
+        assert!(lint_plain(&mut linter, "E tin binti y seis aña.").is_empty());
+    }
+
+    #[test]
+    fn structured_config_follows_language() {
+        let english = Linter::new(Dialect::American).get_structured_lint_config_as_json();
+        let papiamento = papiamento_linter().get_structured_lint_config_as_json();
+        assert!(english.contains("SpellCheck") && !english.contains("PapiamentoSpellCheck"));
+        assert!(papiamento.contains("PapiamentoSpellCheck") && !papiamento.contains("\"AnA\""));
+    }
+
+    #[test]
+    fn english_default_lint_config_is_unchanged() {
+        assert_eq!(
+            Linter::new(Dialect::American).get_default_lint_config_as_json(),
+            get_default_lint_config_as_json()
+        );
+    }
+
+    #[test]
+    fn default_lint_config_follows_language() {
+        let config = papiamento_linter().get_default_lint_config_as_json();
+        assert!(config.contains("\"PapiamentoNumerals\":true"), "{config}");
     }
 
     #[test]

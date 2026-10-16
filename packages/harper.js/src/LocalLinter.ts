@@ -1,5 +1,5 @@
 import type { Dialect, Lint, Suggestion, Linter as WasmLinter } from 'harper-wasm';
-import { Language } from 'harper-wasm';
+import { Language, WritingLanguage } from 'harper-wasm';
 import LazyPromise from 'p-lazy';
 import type { SuperBinaryModule } from './BinaryModule';
 import type Linter from './Linter';
@@ -39,18 +39,22 @@ function toWasmLintArgs(text: string, options?: LintOptions): WasmLintArgs {
 export default class LocalLinter implements Linter {
 	binary: SuperBinaryModule;
 	private inner: Promise<WasmLinter>;
+	private writingLanguage: WritingLanguage;
 	private disposed = false;
 
 	constructor(init: LinterInit) {
 		this.binary = init.binary as SuperBinaryModule;
 		this.binary.setup();
+		this.writingLanguage = init.writingLanguage ?? WritingLanguage.English;
 		this.inner = this.createInner(init.dialect);
 	}
 
 	private createInner(dialect?: Dialect): Promise<WasmLinter> {
 		return LazyPromise.from(async () => {
 			await this.binary.setup();
-			return this.binary.createLinter(dialect);
+			const linter = await this.binary.createLinter(dialect);
+			linter.set_writing_language(this.writingLanguage);
+			return linter;
 		});
 	}
 
@@ -101,11 +105,12 @@ export default class LocalLinter implements Linter {
 	}
 
 	async getDefaultLintConfigAsJSON(): Promise<string> {
-		return await this.binary.getDefaultLintConfigAsJSON();
+		const inner = await this.inner;
+		return inner.get_default_lint_config_as_json();
 	}
 
 	async getDefaultLintConfig(): Promise<LintConfig> {
-		return await this.binary.getDefaultLintConfig();
+		return JSON.parse(await this.getDefaultLintConfigAsJSON()) as LintConfig;
 	}
 
 	async getStructuredLintConfig(): Promise<StructuredLintConfig> {
@@ -224,6 +229,19 @@ export default class LocalLinter implements Linter {
 		}
 
 		return Promise.resolve();
+	}
+
+	async getWritingLanguage(): Promise<WritingLanguage> {
+		const inner = await this.inner;
+
+		return inner.get_writing_language();
+	}
+
+	async setWritingLanguage(writingLanguage: WritingLanguage): Promise<void> {
+		const inner = await this.inner;
+
+		this.writingLanguage = writingLanguage;
+		inner.set_writing_language(writingLanguage);
 	}
 
 	async summarizeStats(start?: bigint, end?: bigint): Promise<any> {
