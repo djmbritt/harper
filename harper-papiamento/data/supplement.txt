@@ -1,0 +1,50 @@
+# Words used in the rules of "Ortografia di Papiamento" (AB 2018 no. 68)
+# that are missing from its "Anexo: Vocabulario di Papiamento".
+# One word per line; the section where the rule text uses the word is noted.
+
+a           # §11.1c: verbo auxiliar 'a' (El a bay caba.)
+ne          # §11.3a: Mayra a balia cu ne.
+or          # §11.8.3: 7 or, 12 or y mey
+cuat'or     # §10.1.3
+cinc'or     # §10.1.3
+shet'or     # §10.1.3
+och'or      # §10.1.3
+nueb'or     # §10.1.3
+cuant'or    # §10.1.3
+shento      # §11.8.1b: dos shento y trintiseis
+sobresali   # §11.3b
+zuruzuru    # §11.10a
+hemodialisis    # §7
+thermostatico   # §7
+
+signo       # §8: signo di lesa, signo di pregunta
+shua        # §5 g-1b, §10.3.2
+copa        # §2: copa, bora
+calcium     # §3.1: ciudad, calcium
+auxiliar    # §11.1c: verbo auxiliar
+meester     # §9.4b
+interim     # §12.3: ad interim
+Koran       # §9.3d
+
+# Words in the word lists of §3.2, §5 and §12 that are missing from the vocabulary
+complexion      # §5 x-4
+condiscipel     # §5 s-2
+encarecidamente # §5 c-2c
+nochecito       # §5 c-2c
+pollo           # §12.1: aros con pollo
+precaucion      # §3.2, exception 1
+scientisa       # §5 s-2
+sclamativo      # §8.5f
+secrecia        # §5 c-2c
+seyo            # §5 y-2, exception
+
+# Place names used as examples in the document
+Oranjestad  # place of signing (Landsverordening, p. 3)
+Rincon      # §8.1
+Paradera    # §9.3f
+Boneiro     # §8.1
+Tanki       # §8.2: Tanki Flip
+Flip        # §8.2: Tanki Flip
+Pos         # §8.2: Pos Abou
+Abou        # §8.2: Pos Abou
+Helena      # §8.2: Santa Helena

@@ -2654,6 +2654,7 @@ dependencies = [
  "harper-core",
  "harper-ink",
  "harper-literate-haskell",
+ "harper-papiamento",
  "harper-pos-utils",
  "harper-python",
  "harper-stats",
@@ -2842,6 +2843,14 @@ dependencies = [
  "tower-lsp-server",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "harper-papiamento"
+version = "2.12.0"
+dependencies = [
+ "harper-core",
+ "hashbrown 0.16.1",
 ]
 
 [[package]]
